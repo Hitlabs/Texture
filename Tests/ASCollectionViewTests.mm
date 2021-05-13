@@ -127,7 +127,7 @@
   return [[ASTextCellNodeWithSetSelectedCounter alloc] init];
 }
 
-- (void)collectionNode:(ASCollectionNode *)collectionNode willBeginBatchFetchWithContext:(ASBatchContext *)context
+- (void)collectionNode:(ASCollectionNode *)collectionNode willBeginBatchFetchWithContext:(ASBatchContext *)context forDimension:(ASBatchFetchingDimension)dimension
 {
   if (_willBeginBatchFetch != nil) {
     _willBeginBatchFetch(context);
