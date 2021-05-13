@@ -15,6 +15,7 @@
 #import <AsyncDisplayKit/ASDimension.h>
 #import <AsyncDisplayKit/ASLayoutRangeType.h>
 #import <AsyncDisplayKit/ASScrollDirection.h>
+#import <AsyncDisplayKit/ASBatchFetchingDimension.h>
 
 @class ASCellNode;
 @class ASCollectionNode;
@@ -96,6 +97,8 @@ NS_ASSUME_NONNULL_BEGIN
  * Defaults to two screenfuls.
  */
 @property (nonatomic) CGFloat leadingScreensForBatching ASDISPLAYNODE_DEPRECATED_MSG("Use ASCollectionNode property instead.");
+
+@property (nonatomic) ASBatchFetchingDimension supportedDimensionsForBatching ASDISPLAYNODE_DEPRECATED_MSG("Use ASCollectionNode property instead.");
 
 /**
  * Optional introspection object for the collection view's layout.

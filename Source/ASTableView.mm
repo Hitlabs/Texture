@@ -173,7 +173,8 @@ static NSString * const kCellReuseIdentifier = @"_ASTableViewCell";
 
   ASRangeController *_rangeController;
 
-  ASBatchContext *_batchContext;
+  ASBatchContext *_batchContextHead;
+  ASBatchContext *_batchContextTail;
 
   // When we update our data controller in response to an interactive move,
   // we don't want to tell the table view about the change (it knows!)
@@ -185,6 +186,7 @@ static NSString * const kCellReuseIdentifier = @"_ASTableViewCell";
   // The y-offset of the top visible row's origin before the update.
   CGFloat _contentOffsetAdjustmentTopVisibleNodeOffset;
   CGFloat _leadingScreensForBatching;
+  ASBatchFetchingDimension _supportedDimensionsForBatching;
   BOOL _automaticallyAdjustsContentOffset;
   
   CGPoint _deceleratingVelocity;
@@ -233,9 +235,11 @@ static NSString * const kCellReuseIdentifier = @"_ASTableViewCell";
     unsigned int tableNodeDidEndDisplayingNodeForRow:1;
     unsigned int tableViewDidEndDisplayingNodeForRow:1;
     unsigned int tableNodeWillBeginBatchFetch:1;
+    unsigned int tableNodeWillBeginBatchFetchDeprecated:1;
     unsigned int tableViewWillBeginBatchFetch:1;
     unsigned int shouldBatchFetchForTableView:1;
     unsigned int shouldBatchFetchForTableNode:1;
+    unsigned int shouldBatchFetchForTableNodeDeprecated:1;
     unsigned int tableViewConstrainedSizeForRow:1;
     unsigned int tableNodeConstrainedSizeForRow:1;
     unsigned int tableViewWillSelectRow:1;
@@ -332,7 +336,9 @@ static NSString * const kCellReuseIdentifier = @"_ASTableViewCell";
   _dataController.delegate = _rangeController;
   
   _leadingScreensForBatching = 2.0;
-  _batchContext = [[ASBatchContext alloc] init];
+  _supportedDimensionsForBatching = ASBatchFetchingDimensionTail;
+  _batchContextHead = [[ASBatchContext alloc] init];
+  _batchContextTail = [[ASBatchContext alloc] init];
   _visibleElements = [[NSCountedSet alloc] init];
   
   _automaticallyAdjustsContentOffset = NO;
@@ -478,9 +484,11 @@ static NSString * const kCellReuseIdentifier = @"_ASTableViewCell";
     _asyncDelegateFlags.scrollViewWillEndDragging = [_asyncDelegate respondsToSelector:@selector(scrollViewWillEndDragging:withVelocity:targetContentOffset:)];
     _asyncDelegateFlags.scrollViewDidEndDecelerating = [_asyncDelegate respondsToSelector:@selector(scrollViewDidEndDecelerating:)];
     _asyncDelegateFlags.tableViewWillBeginBatchFetch = [_asyncDelegate respondsToSelector:@selector(tableView:willBeginBatchFetchWithContext:)];
-    _asyncDelegateFlags.tableNodeWillBeginBatchFetch = [_asyncDelegate respondsToSelector:@selector(tableNode:willBeginBatchFetchWithContext:)];
+    _asyncDelegateFlags.tableNodeWillBeginBatchFetchDeprecated = [_asyncDelegate respondsToSelector:@selector(tableNode:willBeginBatchFetchWithContext:)];
+    _asyncDelegateFlags.tableNodeWillBeginBatchFetch = [_asyncDelegate respondsToSelector:@selector(tableNode:willBeginBatchFetchWithContext:forDimension:)];
     _asyncDelegateFlags.shouldBatchFetchForTableView = [_asyncDelegate respondsToSelector:@selector(shouldBatchFetchForTableView:)];
-    _asyncDelegateFlags.shouldBatchFetchForTableNode = [_asyncDelegate respondsToSelector:@selector(shouldBatchFetchForTableNode:)];
+    _asyncDelegateFlags.shouldBatchFetchForTableNodeDeprecated = [_asyncDelegate respondsToSelector:@selector(shouldBatchFetchForTableNode:)];
+    _asyncDelegateFlags.shouldBatchFetchForTableNode = [_asyncDelegate respondsToSelector:@selector(tableNode:shouldBatchFetchForDimension:)];
     _asyncDelegateFlags.scrollViewWillBeginDragging = [_asyncDelegate respondsToSelector:@selector(scrollViewWillBeginDragging:)];
     _asyncDelegateFlags.scrollViewDidEndDragging = [_asyncDelegate respondsToSelector:@selector(scrollViewDidEndDragging:willDecelerate:)];
     _asyncDelegateFlags.tableViewConstrainedSizeForRow = [_asyncDelegate respondsToSelector:@selector(tableView:constrainedSizeForRowAtIndexPath:)];
@@ -1289,7 +1297,8 @@ static NSString * const kCellReuseIdentifier = @"_ASTableViewCell";
   );
 
   if (targetContentOffset != NULL) {
-    ASDisplayNodeAssert(_batchContext != nil, @"Batch context should exist");
+    ASDisplayNodeAssert(_batchContextHead != nil, @"Batch context (head) should exist");
+    ASDisplayNodeAssert(_batchContextTail != nil, @"Batch context (tail) should exist");
     [self _beginBatchFetchingIfNeededWithContentOffset:*targetContentOffset velocity:velocity];
   }
   
@@ -1433,16 +1442,50 @@ static NSString * const kCellReuseIdentifier = @"_ASTableViewCell";
 
 #pragma mark - Batch Fetching
 
+- (void)setSupportedDimensionsForBatching:(ASBatchFetchingDimension)supportedDimensionsForBatching
+{
+  if (_supportedDimensionsForBatching != supportedDimensionsForBatching) {
+    _supportedDimensionsForBatching = supportedDimensionsForBatching;
+    // Push this to the next runloop to be sure the scroll view has the right content size
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self _checkForBatchFetching];
+    });
+  }
+}
+
+- (ASBatchFetchingDimension)supportedDimensionsForBatching
+{
+  return _supportedDimensionsForBatching;
+}
+
 - (ASBatchContext *)batchContext
 {
-  return _batchContext;
+  return _batchContextHead;
+}
+
+- (ASBatchContext *)batchContextForDimension:(ASBatchFetchingDimension)dimension {
+    if (ASBatchFetchingDimensionContainsTail(dimension)) {
+        return _batchContextTail;
+    } else {
+        return _batchContextHead;
+    }
 }
 
 - (BOOL)canBatchFetch
 {
+  return [self canBatchFetchForDimension:ASBatchFetchingDimensionTail];
+}
+
+- (BOOL)canBatchFetchForDimension:(ASBatchFetchingDimension)dimension
+{
   // if the delegate does not respond to this method, there is no point in starting to fetch
-  BOOL canFetch = _asyncDelegateFlags.tableNodeWillBeginBatchFetch || _asyncDelegateFlags.tableViewWillBeginBatchFetch;
+  BOOL canFetch = _asyncDelegateFlags.tableNodeWillBeginBatchFetch
+    || (_asyncDelegateFlags.tableNodeWillBeginBatchFetchDeprecated && ASBatchFetchingDimensionContainsHead(dimension))
+    || (_asyncDelegateFlags.tableViewWillBeginBatchFetch && ASBatchFetchingDimensionContainsHead(dimension));
   if (canFetch && _asyncDelegateFlags.shouldBatchFetchForTableNode) {
+    GET_TABLENODE_OR_RETURN(tableNode, NO);
+    return [_asyncDelegate tableNode:tableNode shouldBatchFetchForDimension:dimension];
+  } else if (canFetch && _asyncDelegateFlags.shouldBatchFetchForTableNodeDeprecated) {
     GET_TABLENODE_OR_RETURN(tableNode, NO);
     return [_asyncDelegate shouldBatchFetchForTableNode:tableNode];
   } else if (canFetch && _asyncDelegateFlags.shouldBatchFetchForTableView) {
@@ -1486,24 +1529,37 @@ static NSString * const kCellReuseIdentifier = @"_ASTableViewCell";
 
 - (void)_beginBatchFetchingIfNeededWithContentOffset:(CGPoint)contentOffset velocity:(CGPoint)velocity
 {
-  if (ASDisplayShouldFetchBatchForScrollView(self, self.scrollDirection, ASScrollDirectionVerticalDirections, contentOffset, velocity, NO)) {
-    [self _beginBatchFetching];
-  }
+    if (ASBatchFetchingDimensionContainsTail(_supportedDimensionsForBatching)) {
+      if (ASDisplayShouldFetchBatchForScrollView(self, self.scrollDirection, self.scrollableDirections, ASBatchFetchingDimensionTail, contentOffset, velocity, NO)) {
+        [self _beginBatchFetchingForDimension:ASBatchFetchingDimensionTail];
+      }
+    }
+    if (ASBatchFetchingDimensionContainsHead(_supportedDimensionsForBatching)) {
+      if (ASDisplayShouldFetchBatchForScrollView(self, self.scrollDirection, self.scrollableDirections, ASBatchFetchingDimensionHead, contentOffset, velocity, NO)) {
+        [self _beginBatchFetchingForDimension:ASBatchFetchingDimensionHead];
+      }
+    }
 }
 
-- (void)_beginBatchFetching
+- (void)_beginBatchFetchingForDimension:(ASBatchFetchingDimension)dimension
 {
-  [_batchContext beginBatchFetching];
+  ASBatchContext *batchContext = [self batchContextForDimension:dimension];
+  [batchContext beginBatchFetching];
   if (_asyncDelegateFlags.tableNodeWillBeginBatchFetch) {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
       GET_TABLENODE_OR_RETURN(tableNode, (void)0);
-      [self->_asyncDelegate tableNode:tableNode willBeginBatchFetchWithContext:self->_batchContext];
+      [self->_asyncDelegate tableNode:tableNode willBeginBatchFetchWithContext:batchContext forDimension:dimension];
     });
-  } else if (_asyncDelegateFlags.tableViewWillBeginBatchFetch) {
+  } else if (_asyncDelegateFlags.tableNodeWillBeginBatchFetchDeprecated && ASBatchFetchingDimensionContainsHead(dimension)) {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+      GET_TABLENODE_OR_RETURN(tableNode, (void)0);
+      [self->_asyncDelegate tableNode:tableNode willBeginBatchFetchWithContext:batchContext];
+    });
+  } else if (_asyncDelegateFlags.tableViewWillBeginBatchFetch && ASBatchFetchingDimensionContainsHead(dimension)) {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-      [self->_asyncDelegate tableView:self willBeginBatchFetchWithContext:self->_batchContext];
+      [self->_asyncDelegate tableView:self willBeginBatchFetchWithContext:batchContext];
 #pragma clang diagnostic pop
     });
   }

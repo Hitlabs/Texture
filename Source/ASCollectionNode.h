@@ -13,6 +13,7 @@
 #import <AsyncDisplayKit/ASCollectionView.h>
 #import <AsyncDisplayKit/ASBlockTypes.h>
 #import <AsyncDisplayKit/ASRangeManagingNode.h>
+#import <AsyncDisplayKit/ASBatchFetchingDimension.h>
 
 @protocol ASCollectionViewLayoutFacilitatorProtocol;
 @protocol ASCollectionDelegate;
@@ -81,6 +82,8 @@ NS_ASSUME_NONNULL_BEGIN
  * Defaults to two screenfuls.
  */
 @property (nonatomic) CGFloat leadingScreensForBatching;
+
+@property (nonatomic) ASBatchFetchingDimension supportedDimensionsForBatching;
 
 /*
  * A Boolean value that determines whether the collection node will be flipped.
@@ -809,7 +812,8 @@ NS_ASSUME_NONNULL_BEGIN
  * ASCollectionNode currently only supports batch events for tail loads. If you require a head load, consider
  * implementing a UIRefreshControl.
  */
-- (void)collectionNode:(ASCollectionNode *)collectionNode willBeginBatchFetchWithContext:(ASBatchContext *)context;
+- (void)collectionNode:(ASCollectionNode *)collectionNode willBeginBatchFetchWithContext:(ASBatchContext *)context ASDISPLAYNODE_DEPRECATED_MSG("Use collectionNode:willBeginBatchFetchWithContext:forDimension: instead");
+- (void)collectionNode:(ASCollectionNode *)collectionNode willBeginBatchFetchWithContext:(ASBatchContext *)context forDimension:(ASBatchFetchingDimension)dimension;
 
 /**
  * Tell the collection node if batch fetching should begin.
@@ -822,7 +826,8 @@ NS_ASSUME_NONNULL_BEGIN
  * If not implemented, the collection node assumes that it should notify its asyncDelegate when batch fetching
  * should occur.
  */
-- (BOOL)shouldBatchFetchForCollectionNode:(ASCollectionNode *)collectionNode;
+- (BOOL)shouldBatchFetchForCollectionNode:(ASCollectionNode *)collectionNode ASDISPLAYNODE_DEPRECATED_MSG("Use collectionNode:shouldBatchFetchForDimension: instead");
+- (BOOL)collectionNode:(ASCollectionNode *)collectionNode shouldBatchFetchForDimension:(ASBatchFetchingDimension)dimension;
 
 /**
  * Provides the constrained size range for measuring the node at the index path.

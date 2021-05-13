@@ -14,29 +14,31 @@
 BOOL ASDisplayShouldFetchBatchForScrollView(UIScrollView<ASBatchFetchingScrollView> *scrollView,
                                             ASScrollDirection scrollDirection,
                                             ASScrollDirection scrollableDirections,
+                                            ASBatchFetchingDimension dimension,
                                             CGPoint contentOffset,
                                             CGPoint velocity,
                                             BOOL flipsHorizontallyInOppositeLayoutDirection)
 {
   // Don't fetch if the scroll view does not allow
-  if (![scrollView canBatchFetch]) {
+  if (![scrollView canBatchFetchForDimension:dimension]) {
     return NO;
   }
   
   // Check if we should batch fetch
-  ASBatchContext *context = scrollView.batchContext;
+  ASBatchContext *context = [scrollView batchContextForDimension:dimension];
   CGRect bounds = scrollView.bounds;
   CGSize contentSize = scrollView.contentSize;
   CGFloat leadingScreens = scrollView.leadingScreensForBatching;
   id<ASBatchFetchingDelegate> delegate = scrollView.batchFetchingDelegate;
   BOOL visible = (scrollView.window != nil);
   BOOL shouldRenderRTLLayout = [UIView userInterfaceLayoutDirectionForSemanticContentAttribute:scrollView.semanticContentAttribute] == UIUserInterfaceLayoutDirectionRightToLeft;
-  return ASDisplayShouldFetchBatchForContext(context, scrollDirection, scrollableDirections, bounds, contentSize, contentOffset, leadingScreens, visible, shouldRenderRTLLayout, velocity, flipsHorizontallyInOppositeLayoutDirection, delegate);
+  return ASDisplayShouldFetchBatchForContext(context, scrollDirection, scrollableDirections, dimension, bounds, contentSize, contentOffset, leadingScreens, visible, shouldRenderRTLLayout, velocity, flipsHorizontallyInOppositeLayoutDirection, delegate);
 }
 
 BOOL ASDisplayShouldFetchBatchForContext(ASBatchContext *context,
                                          ASScrollDirection scrollDirection,
                                          ASScrollDirection scrollableDirections,
+                                         ASBatchFetchingDimension dimension,
                                          CGRect bounds,
                                          CGSize contentSize,
                                          CGPoint targetOffset,
@@ -82,15 +84,19 @@ BOOL ASDisplayShouldFetchBatchForContext(ASBatchContext *context,
     return NO;
   }
 
-  // If they are scrolling toward the head of content, don't batch fetch.
   BOOL isScrollingTowardHead = (ASScrollDirectionContainsUp(scrollDirection) || (shouldRenderRTLLayout ? ASScrollDirectionContainsRight(scrollDirection) : ASScrollDirectionContainsLeft(scrollDirection)));
-  if (isScrollingTowardHead) {
+  BOOL isScrollingTowardTail = (ASScrollDirectionContainsDown(scrollDirection) || (shouldRenderRTLLayout ? ASScrollDirectionContainsLeft(scrollDirection) : ASScrollDirectionContainsRight(scrollDirection)));
+    
+  if (isScrollingTowardHead && ASBatchFetchingDimensionContainsTail(dimension)) {
+    return NO;
+  }
+  if (isScrollingTowardTail && ASBatchFetchingDimensionContainsHead(dimension)) {
     return NO;
   }
 
   CGFloat triggerDistance = viewLength * leadingScreens;
   CGFloat remainingDistance = 0;
-  if (!flipsHorizontallyInOppositeLayoutDirection && shouldRenderRTLLayout && ASScrollDirectionContainsHorizontalDirection(scrollableDirections)) {
+  if (ASBatchFetchingDimensionContainsHead(dimension) || (!flipsHorizontallyInOppositeLayoutDirection && shouldRenderRTLLayout && ASScrollDirectionContainsHorizontalDirection(scrollableDirections))) {
     remainingDistance = offset;
   } else {
     remainingDistance = contentLength - viewLength - offset;

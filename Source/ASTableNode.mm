@@ -37,6 +37,7 @@
 @property (nonatomic) BOOL allowsMultipleSelectionDuringEditing;
 @property (nonatomic) BOOL inverted;
 @property (nonatomic) CGFloat leadingScreensForBatching;
+@property (nonatomic) ASBatchFetchingDimension supportedDimensionsForBatching;
 @property (nonatomic) UIEdgeInsets contentInset;
 @property (nonatomic) CGPoint contentOffset;
 @property (nonatomic) BOOL animatesContentOffset;
@@ -65,6 +66,7 @@
     _animatesContentOffset = NO;
     _automaticallyAdjustsContentOffset = NO;
     _pagingEnabled = NO;
+    _supportedDimensionsForBatching = ASBatchFetchingDimensionTail;
   }
   return self;
 }
@@ -163,6 +165,8 @@
     view.allowsMultipleSelection              = pendingState.allowsMultipleSelection;
     view.allowsMultipleSelectionDuringEditing = pendingState.allowsMultipleSelectionDuringEditing;
     view.automaticallyAdjustsContentOffset    = pendingState.automaticallyAdjustsContentOffset;
+    view.leadingScreensForBatching            = pendingState.leadingScreensForBatching;
+    view.supportedDimensionsForBatching       = pendingState.supportedDimensionsForBatching;
 #if !TARGET_OS_TV
     view.pagingEnabled                        = pendingState.pagingEnabled;
 #endif
@@ -298,6 +302,28 @@
     return self.view.leadingScreensForBatching;
   }
 }
+
+- (void)setSupportedDimensionsForBatching:(ASBatchFetchingDimension)supportedDimensionsForBatching
+{
+  _ASTablePendingState *pendingState = self.pendingState;
+  if (pendingState) {
+    pendingState.supportedDimensionsForBatching = supportedDimensionsForBatching;
+  } else {
+    ASDisplayNodeAssert(self.nodeLoaded, @"ASTableNode should be loaded if pendingState doesn't exist");
+    self.view.supportedDimensionsForBatching = supportedDimensionsForBatching;
+  }
+}
+
+- (ASBatchFetchingDimension)supportedDimensionsForBatching
+{
+  _ASTablePendingState *pendingState = self.pendingState;
+  if (pendingState) {
+    return pendingState.supportedDimensionsForBatching;
+  } else {
+    return self.view.supportedDimensionsForBatching;
+  }
+}
+
 
 - (void)setContentInset:(UIEdgeInsets)contentInset
 {

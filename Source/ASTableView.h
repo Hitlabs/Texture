@@ -12,6 +12,7 @@
 #import <AsyncDisplayKit/ASBaseDefines.h>
 #import <AsyncDisplayKit/ASLayoutRangeType.h>
 #import <AsyncDisplayKit/ASTableViewProtocols.h>
+#import <AsyncDisplayKit/ASBatchFetchingDimension.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -58,6 +59,8 @@ NS_ASSUME_NONNULL_BEGIN
  * Defaults to two screenfuls.
  */
 @property (nonatomic) CGFloat leadingScreensForBatching ASDISPLAYNODE_DEPRECATED_MSG("Use ASTableNode property instead.");
+
+@property (nonatomic) ASBatchFetchingDimension supportedDimensionsForBatching ASDISPLAYNODE_DEPRECATED_MSG("Use ASCollectionNode property instead.");
 
 /**
  * The distance that the content view is inset from the table view edges. Defaults to UIEdgeInsetsZero.

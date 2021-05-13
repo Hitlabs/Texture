@@ -56,6 +56,7 @@
 @property (nonatomic) BOOL inverted; //default is NO
 @property (nonatomic) ASCellLayoutMode cellLayoutMode;
 @property (nonatomic) CGFloat leadingScreensForBatching;
+@property (nonatomic) ASBatchFetchingDimension supportedDimensionsForBatching;
 @property (nonatomic, weak) id <ASCollectionViewLayoutInspecting> layoutInspector;
 @property (nonatomic) BOOL alwaysBounceVertical;
 @property (nonatomic) BOOL alwaysBounceHorizontal;
@@ -86,6 +87,8 @@
     _flags.showsVerticalScrollIndicator = YES;
     _flags.showsHorizontalScrollIndicator = YES;
     _flags.pagingEnabled = NO;
+    _leadingScreensForBatching = 2;
+    _supportedDimensionsForBatching = ASBatchFetchingDimensionTail;
   }
   return self;
 }
@@ -323,6 +326,8 @@
     view.layoutInspector                = pendingState.layoutInspector;
     view.showsVerticalScrollIndicator   = pendingState.showsVerticalScrollIndicator;
     view.showsHorizontalScrollIndicator = pendingState.showsHorizontalScrollIndicator;
+    view.leadingScreensForBatching      = pendingState.leadingScreensForBatching;
+    view.supportedDimensionsForBatching = pendingState.supportedDimensionsForBatching;
 #if !TARGET_OS_TV
     view.pagingEnabled                  = pendingState.pagingEnabled;
 #endif
@@ -489,6 +494,26 @@
     return self.view.leadingScreensForBatching;
   }
 }
+
+- (void)setSupportedDimensionsForBatching:(ASBatchFetchingDimension)supportedDimensionsForBatching
+{
+  if ([self pendingState]) {
+    _pendingState.supportedDimensionsForBatching = supportedDimensionsForBatching;
+  } else {
+    ASDisplayNodeAssert([self isNodeLoaded], @"ASCollectionNode should be loaded if pendingState doesn't exist");
+    self.view.supportedDimensionsForBatching = supportedDimensionsForBatching;
+  }
+}
+
+- (ASBatchFetchingDimension)supportedDimensionsForBatching
+{
+  if ([self pendingState]) {
+    return _pendingState.supportedDimensionsForBatching;
+  } else {
+    return self.view.supportedDimensionsForBatching;
+  }
+}
+
 
 - (void)setDelegate:(id <ASCollectionDelegate>)delegate
 {

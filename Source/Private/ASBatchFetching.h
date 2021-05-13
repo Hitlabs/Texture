@@ -10,6 +10,7 @@
 #import <UIKit/UIKit.h>
 
 #import <AsyncDisplayKit/ASScrollDirection.h>
+#import <AsyncDisplayKit/ASBatchFetchingDimension.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -18,10 +19,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 @protocol ASBatchFetchingScrollView <NSObject>
 
-- (BOOL)canBatchFetch;
-- (ASBatchContext *)batchContext;
+- (BOOL)canBatchFetch ASDISPLAYNODE_DEPRECATED_MSG("Use the `canBatchFetchForDimension:` method instead.");
+- (ASBatchContext *)batchContext ASDISPLAYNODE_DEPRECATED_MSG("Use the `batchContextForDimension:` method instead.");;
 - (CGFloat)leadingScreensForBatching;
 - (nullable id<ASBatchFetchingDelegate>)batchFetchingDelegate;
+
+- (ASBatchFetchingDimension)supportedDimensionsForBatching;
+- (BOOL)canBatchFetchForDimension:(ASBatchFetchingDimension)dimension;
+- (ASBatchContext *)batchContextForDimension:(ASBatchFetchingDimension)dimension;
 
 @end
 
@@ -41,6 +46,7 @@ NS_ASSUME_NONNULL_BEGIN
 ASDK_EXTERN BOOL ASDisplayShouldFetchBatchForScrollView(UIScrollView<ASBatchFetchingScrollView> *scrollView,
                                             ASScrollDirection scrollDirection,
                                             ASScrollDirection scrollableDirections,
+                                            ASBatchFetchingDimension dimension,
                                             CGPoint contentOffset,
                                             CGPoint velocity,
                                             BOOL flipsHorizontallyInOppositeLayoutDirection);
@@ -67,6 +73,7 @@ ASDK_EXTERN BOOL ASDisplayShouldFetchBatchForScrollView(UIScrollView<ASBatchFetc
 ASDK_EXTERN BOOL ASDisplayShouldFetchBatchForContext(ASBatchContext *context,
                                                 ASScrollDirection scrollDirection,
                                                 ASScrollDirection scrollableDirections,
+                                                ASBatchFetchingDimension dimension,
                                                 CGRect bounds,
                                                 CGSize contentSize,
                                                 CGPoint targetOffset,

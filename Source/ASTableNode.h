@@ -12,6 +12,7 @@
 #import <AsyncDisplayKit/ASRangeControllerUpdateRangeProtocol+Beta.h>
 #import <AsyncDisplayKit/ASTableView.h>
 #import <AsyncDisplayKit/ASRangeManagingNode.h>
+#import <AsyncDisplayKit/ASBatchFetchingDimension.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -40,6 +41,8 @@ NS_ASSUME_NONNULL_BEGIN
  * Defaults to two screenfuls.
  */
 @property (nonatomic) CGFloat leadingScreensForBatching;
+
+@property (nonatomic) ASBatchFetchingDimension supportedDimensionsForBatching;
 
 /*
  * A Boolean value that determines whether the table will be flipped.
@@ -654,7 +657,9 @@ NS_ASSUME_NONNULL_BEGIN
  * ASTableView currently only supports batch events for tail loads. If you require a head load, consider implementing a
  * UIRefreshControl.
  */
-- (void)tableNode:(ASTableNode *)tableNode willBeginBatchFetchWithContext:(ASBatchContext *)context;
+- (void)tableNode:(ASTableNode *)tableNode willBeginBatchFetchWithContext:(ASBatchContext *)context ASDISPLAYNODE_DEPRECATED_MSG("Use tableNode:willBeginBatchFetchWithContext:forDimension: instead");
+- (void)tableNode:(ASTableNode *)tableNode willBeginBatchFetchWithContext:(ASBatchContext *)context forDimension:(ASBatchFetchingDimension)dimension;
+
 
 /**
  * Tell the tableView if batch fetching should begin.
@@ -667,7 +672,8 @@ NS_ASSUME_NONNULL_BEGIN
  * If not implemented, the tableView assumes that it should notify its asyncDelegate when batch fetching
  * should occur.
  */
-- (BOOL)shouldBatchFetchForTableNode:(ASTableNode *)tableNode;
+- (BOOL)shouldBatchFetchForTableNode:(ASTableNode *)tableNode ASDISPLAYNODE_DEPRECATED_MSG("Use tableNode:shouldBatchFetchForDimension: instead");
+- (BOOL)tableNode:(ASTableNode *)tableNode shouldBatchFetchForDimension:(ASBatchFetchingDimension)dimension;
 
 /**
  * Informs the delegate that the table view will add the given node

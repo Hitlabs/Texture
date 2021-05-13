@@ -96,6 +96,7 @@ static NSString * const kReuseIdentifier = @"_ASCollectionReuseIdentifier";
   NSHashTable<ASCellNode *> *_cellsForLayoutUpdates;
   id<ASCollectionViewLayoutFacilitatorProtocol> _layoutFacilitator;
   CGFloat _leadingScreensForBatching;
+  ASBatchFetchingDimension _supportedDimensionsForBatching;
   
   // When we update our data controller in response to an interactive move,
   // we don't want to tell the collection view about the change (it knows!)
@@ -105,7 +106,8 @@ static NSString * const kReuseIdentifier = @"_ASCollectionReuseIdentifier";
   NSUInteger _superBatchUpdateCount;
   BOOL _isDeallocating;
   
-  ASBatchContext *_batchContext;
+  ASBatchContext *_batchContextHead;
+  ASBatchContext *_batchContextTail;
   
   CGSize _lastBoundsSizeUsedForMeasuringNodes;
   
@@ -192,9 +194,11 @@ static NSString * const kReuseIdentifier = @"_ASCollectionReuseIdentifier";
     unsigned int collectionNodeCanPerformActionForItem:1;
     unsigned int collectionNodePerformActionForItem:1;
     unsigned int collectionNodeWillBeginBatchFetch:1;
+    unsigned int collectionNodeWillBeginBatchFetchDeprecated:1;
     unsigned int collectionNodeWillDisplaySupplementaryElement:1;
     unsigned int collectionNodeDidEndDisplayingSupplementaryElement:1;
     unsigned int shouldBatchFetchForCollectionNode:1;
+    unsigned int shouldBatchFetchForCollectionNodeDeprecated:1;
 
     // Interop flags
     unsigned int interop:1;
@@ -291,9 +295,11 @@ static NSString * const kReuseIdentifier = @"_ASCollectionReuseIdentifier";
   _dataController = [[ASDataController alloc] initWithDataSource:self node:owningNode];
   _dataController.delegate = _rangeController;
   
-  _batchContext = [[ASBatchContext alloc] init];
+  _batchContextHead = [[ASBatchContext alloc] init];
+  _batchContextTail = [[ASBatchContext alloc] init];
   
   _leadingScreensForBatching = 2.0;
+  _supportedDimensionsForBatching = ASBatchFetchingDimensionTail;
   
   _lastBoundsSizeUsedForMeasuringNodes = self.bounds.size;
   
@@ -545,8 +551,10 @@ static NSString * const kReuseIdentifier = @"_ASCollectionReuseIdentifier";
     _asyncDelegateFlags.collectionViewPerformActionForItem = [_asyncDelegate respondsToSelector:@selector(collectionView:performAction:forItemAtIndexPath:withSender:)];
     _asyncDelegateFlags.collectionNodeWillDisplayItem = [_asyncDelegate respondsToSelector:@selector(collectionNode:willDisplayItemWithNode:)];
     _asyncDelegateFlags.collectionNodeDidEndDisplayingItem = [_asyncDelegate respondsToSelector:@selector(collectionNode:didEndDisplayingItemWithNode:)];
-    _asyncDelegateFlags.collectionNodeWillBeginBatchFetch = [_asyncDelegate respondsToSelector:@selector(collectionNode:willBeginBatchFetchWithContext:)];
-    _asyncDelegateFlags.shouldBatchFetchForCollectionNode = [_asyncDelegate respondsToSelector:@selector(shouldBatchFetchForCollectionNode:)];
+    _asyncDelegateFlags.collectionNodeWillBeginBatchFetchDeprecated = [_asyncDelegate respondsToSelector:@selector(collectionNode:willBeginBatchFetchWithContext:)];
+    _asyncDelegateFlags.collectionNodeWillBeginBatchFetch = [_asyncDelegate respondsToSelector:@selector(collectionNode:willBeginBatchFetchWithContext:forDimension:)];
+    _asyncDelegateFlags.shouldBatchFetchForCollectionNodeDeprecated = [_asyncDelegate respondsToSelector:@selector(shouldBatchFetchForCollectionNode:)];
+    _asyncDelegateFlags.shouldBatchFetchForCollectionNode = [_asyncDelegate respondsToSelector:@selector(collectionNode:shouldBatchFetchForDimension:)];
     _asyncDelegateFlags.collectionNodeShouldSelectItem = [_asyncDelegate respondsToSelector:@selector(collectionNode:shouldSelectItemAtIndexPath:)];
     _asyncDelegateFlags.collectionNodeDidSelectItem = [_asyncDelegate respondsToSelector:@selector(collectionNode:didSelectItemAtIndexPath:)];
     _asyncDelegateFlags.collectionNodeShouldDeselectItem = [_asyncDelegate respondsToSelector:@selector(collectionNode:shouldDeselectItemAtIndexPath:)];
@@ -1643,7 +1651,8 @@ static NSString * const kReuseIdentifier = @"_ASCollectionReuseIdentifier";
   );
 
   if (targetContentOffset != NULL) {
-    ASDisplayNodeAssert(_batchContext != nil, @"Batch context should exist");
+    ASDisplayNodeAssert(_batchContextHead != nil, @"Batch context (head) should exist");
+    ASDisplayNodeAssert(_batchContextTail != nil, @"Batch context (tail) should exist");
     [self _beginBatchFetchingIfNeededWithContentOffset:*targetContentOffset velocity:velocity];
   }
   
@@ -1805,16 +1814,50 @@ static NSString * const kReuseIdentifier = @"_ASCollectionReuseIdentifier";
 
 #pragma mark - Batch Fetching
 
+- (void)setSupportedDimensionsForBatching:(ASBatchFetchingDimension)supportedDimensionsForBatching
+{
+  if (_supportedDimensionsForBatching != supportedDimensionsForBatching) {
+    _supportedDimensionsForBatching = supportedDimensionsForBatching;
+    // Push this to the next runloop to be sure the scroll view has the right content size
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self _checkForBatchFetching];
+    });
+  }
+}
+
+- (ASBatchFetchingDimension)supportedDimensionsForBatching
+{
+  return _supportedDimensionsForBatching;
+}
+
 - (ASBatchContext *)batchContext
 {
-  return _batchContext;
+  return _batchContextHead;
+}
+
+- (ASBatchContext *)batchContextForDimension:(ASBatchFetchingDimension)dimension {
+    if (ASBatchFetchingDimensionContainsTail(dimension)) {
+        return _batchContextTail;
+    } else {
+        return _batchContextHead;
+    }
 }
 
 - (BOOL)canBatchFetch
 {
+  return [self canBatchFetchForDimension:ASBatchFetchingDimensionTail];
+}
+
+- (BOOL)canBatchFetchForDimension:(ASBatchFetchingDimension)dimension
+{
   // if the delegate does not respond to this method, there is no point in starting to fetch
-  BOOL canFetch = _asyncDelegateFlags.collectionNodeWillBeginBatchFetch || _asyncDelegateFlags.collectionViewWillBeginBatchFetch;
+  BOOL canFetch = _asyncDelegateFlags.collectionNodeWillBeginBatchFetch
+    || (_asyncDelegateFlags.collectionNodeWillBeginBatchFetchDeprecated && ASBatchFetchingDimensionContainsHead(dimension))
+    || (_asyncDelegateFlags.collectionViewWillBeginBatchFetch && ASBatchFetchingDimensionContainsHead(dimension));
   if (canFetch && _asyncDelegateFlags.shouldBatchFetchForCollectionNode) {
+    GET_COLLECTIONNODE_OR_RETURN(collectionNode, NO);
+    return [_asyncDelegate collectionNode:collectionNode shouldBatchFetchForDimension:dimension];
+  } else if (canFetch && _asyncDelegateFlags.shouldBatchFetchForCollectionNodeDeprecated) {
     GET_COLLECTIONNODE_OR_RETURN(collectionNode, NO);
     return [_asyncDelegate shouldBatchFetchForCollectionNode:collectionNode];
   } else if (canFetch && _asyncDelegateFlags.shouldBatchFetchForCollectionView) {
@@ -1860,26 +1903,40 @@ static NSString * const kReuseIdentifier = @"_ASCollectionReuseIdentifier";
   // Since we are accessing self.collectionViewLayout, we should make sure we are on main
   ASDisplayNodeAssertMainThread();
   
-  if (ASDisplayShouldFetchBatchForScrollView(self, self.scrollDirection, self.scrollableDirections, contentOffset, velocity, self.collectionViewLayout.flipsHorizontallyInOppositeLayoutDirection)) {
-    [self _beginBatchFetching];
+  if (ASBatchFetchingDimensionContainsTail(_supportedDimensionsForBatching)) {
+    if (ASDisplayShouldFetchBatchForScrollView(self, self.scrollDirection, self.scrollableDirections, ASBatchFetchingDimensionTail, contentOffset, velocity, self.collectionViewLayout.flipsHorizontallyInOppositeLayoutDirection)) {
+      [self _beginBatchFetchingForDimension:ASBatchFetchingDimensionTail];
+    }
+  }
+  if (ASBatchFetchingDimensionContainsHead(_supportedDimensionsForBatching)) {
+    if (ASDisplayShouldFetchBatchForScrollView(self, self.scrollDirection, self.scrollableDirections, ASBatchFetchingDimensionHead, contentOffset, velocity, self.collectionViewLayout.flipsHorizontallyInOppositeLayoutDirection)) {
+      [self _beginBatchFetchingForDimension:ASBatchFetchingDimensionHead];
+    }
   }
 }
 
-- (void)_beginBatchFetching
+- (void)_beginBatchFetchingForDimension:(ASBatchFetchingDimension)dimension
 {
   as_activity_create_for_scope("Batch fetch for collection node");
-  [_batchContext beginBatchFetching];
+  ASBatchContext *batchContext = [self batchContextForDimension:dimension];
+  [batchContext beginBatchFetching];
   if (_asyncDelegateFlags.collectionNodeWillBeginBatchFetch) {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
       GET_COLLECTIONNODE_OR_RETURN(collectionNode, (void)0);
-      os_log_debug(ASCollectionLog(), "Beginning batch fetch for %@ with context %@", collectionNode, self->_batchContext);
-      [self->_asyncDelegate collectionNode:collectionNode willBeginBatchFetchWithContext:self->_batchContext];
+      os_log_debug(ASCollectionLog(), "Beginning batch fetch for %@ with context %@ and dimension %@", collectionNode, batchContext, ASBatchFetchingDimensionDescription(dimension));
+      [self->_asyncDelegate collectionNode:collectionNode willBeginBatchFetchWithContext:batchContext forDimension:dimension];
     });
-  } else if (_asyncDelegateFlags.collectionViewWillBeginBatchFetch) {
+  } else if(_asyncDelegateFlags.collectionNodeWillBeginBatchFetchDeprecated && ASBatchFetchingDimensionContainsHead(dimension)) {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+      GET_COLLECTIONNODE_OR_RETURN(collectionNode, (void)0);
+      os_log_debug(ASCollectionLog(), "Beginning batch fetch for %@ with context %@", collectionNode, batchContext);
+      [self->_asyncDelegate collectionNode:collectionNode willBeginBatchFetchWithContext:batchContext];
+    });
+  } else if (_asyncDelegateFlags.collectionViewWillBeginBatchFetch && ASBatchFetchingDimensionContainsHead(dimension)) {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-      [self->_asyncDelegate collectionView:self willBeginBatchFetchWithContext:self->_batchContext];
+      [self->_asyncDelegate collectionView:self willBeginBatchFetchWithContext:batchContext];
 #pragma clang diagnostic pop
     });
   }
