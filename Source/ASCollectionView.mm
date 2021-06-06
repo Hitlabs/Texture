@@ -1852,8 +1852,8 @@ static NSString * const kReuseIdentifier = @"_ASCollectionReuseIdentifier";
 {
   // if the delegate does not respond to this method, there is no point in starting to fetch
   BOOL canFetch = _asyncDelegateFlags.collectionNodeWillBeginBatchFetch
-    || (_asyncDelegateFlags.collectionNodeWillBeginBatchFetchDeprecated && ASBatchFetchingDimensionContainsHead(dimension))
-    || (_asyncDelegateFlags.collectionViewWillBeginBatchFetch && ASBatchFetchingDimensionContainsHead(dimension));
+    || (_asyncDelegateFlags.collectionNodeWillBeginBatchFetchDeprecated && ASBatchFetchingDimensionContainsTail(dimension))
+    || (_asyncDelegateFlags.collectionViewWillBeginBatchFetch && ASBatchFetchingDimensionContainsTail(dimension));
   if (canFetch && _asyncDelegateFlags.shouldBatchFetchForCollectionNode) {
     GET_COLLECTIONNODE_OR_RETURN(collectionNode, NO);
     return [_asyncDelegate collectionNode:collectionNode shouldBatchFetchForDimension:dimension];
@@ -1926,13 +1926,13 @@ static NSString * const kReuseIdentifier = @"_ASCollectionReuseIdentifier";
       os_log_debug(ASCollectionLog(), "Beginning batch fetch for %@ with context %@ and dimension %@", collectionNode, batchContext, ASBatchFetchingDimensionDescription(dimension));
       [self->_asyncDelegate collectionNode:collectionNode willBeginBatchFetchWithContext:batchContext forDimension:dimension];
     });
-  } else if(_asyncDelegateFlags.collectionNodeWillBeginBatchFetchDeprecated && ASBatchFetchingDimensionContainsHead(dimension)) {
+  } else if(_asyncDelegateFlags.collectionNodeWillBeginBatchFetchDeprecated && ASBatchFetchingDimensionContainsTail(dimension)) {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
       GET_COLLECTIONNODE_OR_RETURN(collectionNode, (void)0);
       os_log_debug(ASCollectionLog(), "Beginning batch fetch for %@ with context %@", collectionNode, batchContext);
       [self->_asyncDelegate collectionNode:collectionNode willBeginBatchFetchWithContext:batchContext];
     });
-  } else if (_asyncDelegateFlags.collectionViewWillBeginBatchFetch && ASBatchFetchingDimensionContainsHead(dimension)) {
+  } else if (_asyncDelegateFlags.collectionViewWillBeginBatchFetch && ASBatchFetchingDimensionContainsTail(dimension)) {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"

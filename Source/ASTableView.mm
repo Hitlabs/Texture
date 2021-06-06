@@ -1480,8 +1480,8 @@ static NSString * const kCellReuseIdentifier = @"_ASTableViewCell";
 {
   // if the delegate does not respond to this method, there is no point in starting to fetch
   BOOL canFetch = _asyncDelegateFlags.tableNodeWillBeginBatchFetch
-    || (_asyncDelegateFlags.tableNodeWillBeginBatchFetchDeprecated && ASBatchFetchingDimensionContainsHead(dimension))
-    || (_asyncDelegateFlags.tableViewWillBeginBatchFetch && ASBatchFetchingDimensionContainsHead(dimension));
+    || (_asyncDelegateFlags.tableNodeWillBeginBatchFetchDeprecated && ASBatchFetchingDimensionContainsTail(dimension))
+    || (_asyncDelegateFlags.tableViewWillBeginBatchFetch && ASBatchFetchingDimensionContainsTail(dimension));
   if (canFetch && _asyncDelegateFlags.shouldBatchFetchForTableNode) {
     GET_TABLENODE_OR_RETURN(tableNode, NO);
     return [_asyncDelegate tableNode:tableNode shouldBatchFetchForDimension:dimension];
@@ -1550,12 +1550,12 @@ static NSString * const kCellReuseIdentifier = @"_ASTableViewCell";
       GET_TABLENODE_OR_RETURN(tableNode, (void)0);
       [self->_asyncDelegate tableNode:tableNode willBeginBatchFetchWithContext:batchContext forDimension:dimension];
     });
-  } else if (_asyncDelegateFlags.tableNodeWillBeginBatchFetchDeprecated && ASBatchFetchingDimensionContainsHead(dimension)) {
+  } else if (_asyncDelegateFlags.tableNodeWillBeginBatchFetchDeprecated && ASBatchFetchingDimensionContainsTail(dimension)) {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
       GET_TABLENODE_OR_RETURN(tableNode, (void)0);
       [self->_asyncDelegate tableNode:tableNode willBeginBatchFetchWithContext:batchContext];
     });
-  } else if (_asyncDelegateFlags.tableViewWillBeginBatchFetch && ASBatchFetchingDimensionContainsHead(dimension)) {
+  } else if (_asyncDelegateFlags.tableViewWillBeginBatchFetch && ASBatchFetchingDimensionContainsTail(dimension)) {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
