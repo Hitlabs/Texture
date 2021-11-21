@@ -1902,14 +1902,17 @@ static NSString * const kReuseIdentifier = @"_ASCollectionReuseIdentifier";
 {
   // Since we are accessing self.collectionViewLayout, we should make sure we are on main
   ASDisplayNodeAssertMainThread();
-  
+  BOOL flipsHorizontallyInOppositeLayoutDirection = NO;
+  if (AS_AVAILABLE_IOS(11.0)) {
+    flipsHorizontallyInOppositeLayoutDirection = self.collectionViewLayout.flipsHorizontallyInOppositeLayoutDirection;
+  }
   if (ASBatchFetchingDimensionContainsTail(_supportedDimensionsForBatching)) {
-    if (ASDisplayShouldFetchBatchForScrollView(self, self.scrollDirection, self.scrollableDirections, ASBatchFetchingDimensionTail, contentOffset, velocity, self.collectionViewLayout.flipsHorizontallyInOppositeLayoutDirection)) {
+    if (ASDisplayShouldFetchBatchForScrollView(self, self.scrollDirection, self.scrollableDirections, ASBatchFetchingDimensionTail, contentOffset, velocity, flipsHorizontallyInOppositeLayoutDirection)) {
       [self _beginBatchFetchingForDimension:ASBatchFetchingDimensionTail];
     }
   }
   if (ASBatchFetchingDimensionContainsHead(_supportedDimensionsForBatching)) {
-    if (ASDisplayShouldFetchBatchForScrollView(self, self.scrollDirection, self.scrollableDirections, ASBatchFetchingDimensionHead, contentOffset, velocity, self.collectionViewLayout.flipsHorizontallyInOppositeLayoutDirection)) {
+    if (ASDisplayShouldFetchBatchForScrollView(self, self.scrollDirection, self.scrollableDirections, ASBatchFetchingDimensionHead, contentOffset, velocity, flipsHorizontallyInOppositeLayoutDirection)) {
       [self _beginBatchFetchingForDimension:ASBatchFetchingDimensionHead];
     }
   }
