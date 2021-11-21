@@ -24,6 +24,7 @@
 
 @property (nonatomic) NSUInteger setSelectedCounter;
 @property (nonatomic) NSUInteger applyLayoutAttributesCount;
+@property (nonatomic) NSUInteger didEnterPreloadStateCount;
 
 @end
 
@@ -38,6 +39,12 @@
 - (void)applyLayoutAttributes:(UICollectionViewLayoutAttributes *)layoutAttributes
 {
   _applyLayoutAttributesCount++;
+}
+
+- (void)didEnterPreloadState
+{
+  [super didEnterPreloadState];
+  _didEnterPreloadStateCount++;
 }
 
 @end
@@ -78,7 +85,7 @@
   return self;
 }
 
-- (ASCellNode *)collectionView:(ASCollectionView *)collectionView nodeForItemAtIndexPath:(NSIndexPath *)indexPath {
+- (ASCellNode *)collectionNode:(ASCollectionNode *)collectionNode nodeForItemAtIndexPath:(NSIndexPath *)indexPath {
   ASTextCellNodeWithSetSelectedCounter *textCellNode = [ASTextCellNodeWithSetSelectedCounter new];
   textCellNode.text = indexPath.description;
 
@@ -86,7 +93,7 @@
 }
 
 
-- (ASCellNodeBlock)collectionView:(ASCollectionView *)collectionView nodeBlockForItemAtIndexPath:(NSIndexPath *)indexPath {
+- (ASCellNodeBlock)collectionNode:(ASCollectionNode *)collectionNode nodeBlockForItemAtIndexPath:(NSIndexPath *)indexPath {
   return ^{
     ASTextCellNodeWithSetSelectedCounter *textCellNode = [ASTextCellNodeWithSetSelectedCounter new];
     textCellNode.text = indexPath.description;
@@ -94,11 +101,11 @@
   };
 }
 
-- (NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView {
+- (NSInteger)numberOfSectionsInCollectionNode:(ASCollectionNode *)collectionNode {
   return _itemCounts.size();
 }
 
-- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
+- (NSInteger)collectionNode:(ASCollectionNode *)collectionNode numberOfItemsInSection:(NSInteger)section {
   return _itemCounts[section];
 }
 
@@ -115,7 +122,7 @@
   return CGSizeMake(100, 100);
 }
 
-- (ASCellNode *)collectionView:(ASCollectionView *)collectionView nodeForSupplementaryElementOfKind:(NSString *)kind atIndexPath:(NSIndexPath *)indexPath
+- (ASCellNode *)collectionNode:(ASCollectionNode *)collectionNode nodeForSupplementaryElementOfKind:(nonnull NSString *)kind atIndexPath:(nonnull NSIndexPath *)indexPath
 {
   return [[ASTextCellNodeWithSetSelectedCounter alloc] init];
 }
@@ -147,8 +154,7 @@
     // Populate these immediately so that they're not unexpectedly nil during tests.
     self.asyncDelegate = [[ASCollectionViewTestDelegate alloc] initWithNumberOfSections:10 numberOfItemsInSection:10];
     id realLayout = [UICollectionViewFlowLayout new];
-    id mockLayout = [OCMockObject partialMockForObject:realLayout];
-    self.collectionNode = [[ASCollectionNode alloc] initWithFrame:self.view.bounds collectionViewLayout:mockLayout];
+    self.collectionNode = [[ASCollectionNode alloc] initWithFrame:self.view.bounds collectionViewLayout:realLayout];
     self.collectionView = self.collectionNode.view;
     self.collectionView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.collectionNode.dataSource = self.asyncDelegate;
@@ -178,20 +184,9 @@
 {
   [super setUp];
   ASConfiguration *config = [ASConfiguration new];
-  config.experimentalFeatures = ASExperimentalOptimizeDataControllerPipeline;
+  config.experimentalFeatures = ASExperimentalOptimizeDataControllerPipeline
+                              | ASExperimentalRangeUpdateOnChangesetUpdate;
   [ASConfigurationManager test_resetWithConfiguration:config];
-}
-
-- (void)tearDown
-{
-  // We can't prevent the system from retaining windows, but we can at least clear them out to avoid
-  // pollution between test cases.
-  for (UIWindow *window in [UIApplication sharedApplication].windows) {
-    for (UIView *subview in window.subviews) {
-      [subview removeFromSuperview];
-    }
-  }
-  [super tearDown];
 }
 
 - (void)testDataSourceImplementsNecessaryMethods
@@ -400,6 +395,31 @@
   XCTAssert([node conformsToProtocol:@protocol(ASRangeControllerUpdateRangeProtocol)]);
 }
 
+/**
+ * Test that hit tests are correct when the collection node is inverted.
+ */
+- (void)testInvertedCollectionViewHitTest
+{
+  ASCollectionViewTestController *testController = [[ASCollectionViewTestController alloc] initWithNibName:nil bundle:nil];
+  UIWindow *window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+  [window setRootViewController:testController];
+  [window makeKeyAndVisible];
+  
+  testController.collectionNode.inverted = true;
+  [testController.collectionNode reloadData];
+  [testController.collectionNode waitUntilAllUpdatesAreProcessed];
+  [testController.collectionView layoutIfNeeded];
+  
+  NSIndexPath *indexPath = [NSIndexPath indexPathForItem:0 inSection:0];
+  UICollectionViewCell *cell = [testController.collectionView cellForItemAtIndexPath:indexPath];
+  ASDisplayNode *node = [testController.collectionNode nodeForItemAtIndexPath:indexPath];
+  
+  CGPoint testPointInCollectionView = CGPointMake(CGRectGetMidX(cell.frame), CGRectGetMidY(cell.frame));
+  UIView *hitTestView = [testController.collectionView hitTest:testPointInCollectionView withEvent:nil];
+  
+  XCTAssertEqualObjects(hitTestView, node.view, @"Expected node's view to be the result of the hit test.");
+}
+
 #pragma mark - Update Validations
 
 #define updateValidationTestPrologue \
@@ -504,6 +524,81 @@
     [cv reloadSections:sections];
     [cv deleteSections:sections];
   } completion:nil]);
+}
+
+- (void)testItemsInsertedIntoThePreloadRangeGetPreloaded
+{
+  updateValidationTestPrologue
+  
+  ASRangeTuningParameters minimumPreloadParams = { .leadingBufferScreenfuls = 1, .trailingBufferScreenfuls = 1 };
+  [cn setTuningParameters:minimumPreloadParams forRangeMode:ASLayoutRangeModeMinimum rangeType:ASLayoutRangeTypePreload];
+  [cn updateCurrentRangeWithMode:ASLayoutRangeModeMinimum];
+
+  __weak ASCollectionViewTestController *weakController = testController;
+  NSIndexPath *lastVisibleIndex = [cv indexPathsForVisibleItems].lastObject;
+  
+  NSInteger itemCount = weakController.asyncDelegate->_itemCounts[lastVisibleIndex.section];
+  BOOL isLastItemInSection = lastVisibleIndex.row == itemCount - 1;
+  NSInteger nextItemSection = isLastItemInSection ? lastVisibleIndex.section + 1 : lastVisibleIndex.section;
+  NSInteger nextItemRow = isLastItemInSection ? 0 : lastVisibleIndex.row + 1;
+  
+  XCTAssertTrue(weakController.asyncDelegate->_itemCounts.size() > nextItemSection, @"There is no items after the last visible item. Update the section/row counts so that there is one for this test to work properly.");
+  XCTAssertTrue(weakController.asyncDelegate->_itemCounts[nextItemSection] > nextItemRow, @"There is no items after the last visible item. Update the section/row counts so that there is one for this test to work properly.");
+  
+  NSIndexPath *nextItemIndexPath = [NSIndexPath indexPathForRow:nextItemRow inSection:nextItemSection];
+  ASTextCellNodeWithSetSelectedCounter *nodeBeforeUpdate = (ASTextCellNodeWithSetSelectedCounter *)[cv nodeForItemAtIndexPath:nextItemIndexPath];
+
+  XCTestExpectation *noChangeDone = [self expectationWithDescription:@"Batch update with no changes done and completion block has been called. Tuning params set to 1 screenful."];
+  
+  __block ASTextCellNodeWithSetSelectedCounter *nodeAfterUpdate;
+  [cv performBatchUpdates:^{
+  } completion:^(BOOL finished) {
+    nodeAfterUpdate = (ASTextCellNodeWithSetSelectedCounter *)[cv nodeForItemAtIndexPath:nextItemIndexPath];
+    [noChangeDone fulfill];
+  }];
+  
+  [self waitForExpectations:@[ noChangeDone ] timeout:1];
+  
+  XCTAssertTrue(nodeBeforeUpdate == nodeAfterUpdate, @"Node should not have changed since no updates were made.");
+  XCTAssertTrue(nodeAfterUpdate.didEnterPreloadStateCount == 1, @"Node should have been preloaded.");
+
+  XCTestExpectation *changeDone = [self expectationWithDescription:@"Batch update with changes done and completion block has been called. Tuning params set to 1 screenful."];
+  
+  [cv performBatchUpdates:^{
+    NSArray *indexPaths = @[ nextItemIndexPath ];
+    [cv deleteItemsAtIndexPaths:indexPaths];
+    [cv insertItemsAtIndexPaths:indexPaths];
+  } completion:^(BOOL finished) {
+    nodeAfterUpdate = (ASTextCellNodeWithSetSelectedCounter *)[cv nodeForItemAtIndexPath:nextItemIndexPath];
+    [changeDone fulfill];
+  }];
+  
+  [self waitForExpectations:@[ changeDone ] timeout:1];
+  
+  XCTAssertTrue(nodeBeforeUpdate != nodeAfterUpdate, @"Node should have changed after updating.");
+  XCTAssertTrue(nodeAfterUpdate.didEnterPreloadStateCount == 1, @"New node should have been preloaded.");
+  
+  minimumPreloadParams = { .leadingBufferScreenfuls = 0, .trailingBufferScreenfuls = 0 };
+  [cn setTuningParameters:minimumPreloadParams forRangeMode:ASLayoutRangeModeMinimum rangeType:ASLayoutRangeTypePreload];
+  [cn updateCurrentRangeWithMode:ASLayoutRangeModeMinimum];
+
+  XCTestExpectation *changeDoneZeroSreenfuls = [self expectationWithDescription:@"Batch update with changes done and completion block has been called. Tuning params set to 0 screenful."];
+  
+  nodeBeforeUpdate = nodeAfterUpdate;
+  __block ASTextCellNodeWithSetSelectedCounter *nodeAfterUpdateZeroSreenfuls;
+  [cv performBatchUpdates:^{
+    NSArray *indexPaths = @[ nextItemIndexPath ];
+    [cv deleteItemsAtIndexPaths:indexPaths];
+    [cv insertItemsAtIndexPaths:indexPaths];
+  } completion:^(BOOL finished) {
+    nodeAfterUpdateZeroSreenfuls = (ASTextCellNodeWithSetSelectedCounter *)[cv nodeForItemAtIndexPath:nextItemIndexPath];
+    [changeDoneZeroSreenfuls fulfill];
+  }];
+  
+  [self waitForExpectations:@[ changeDoneZeroSreenfuls ] timeout:1];
+  
+  XCTAssertTrue(nodeBeforeUpdate != nodeAfterUpdateZeroSreenfuls, @"Node should have changed after updating.");
+  XCTAssertTrue(nodeAfterUpdateZeroSreenfuls.didEnterPreloadStateCount == 0, @"New node should NOT have been preloaded.");
 }
 
 - (void)testCellNodeLayoutAttributes
@@ -648,14 +743,14 @@
 - (void)testThatNodeCalculatedSizesAreUpdatedBeforeFirstPrepareLayoutAfterRotation
 {
   updateValidationTestPrologue
-  id layout = cv.collectionViewLayout;
+  id collectionViewLayoutMock = OCMPartialMock(cv.collectionViewLayout);
   CGSize initialItemSize = [cv nodeForItemAtIndexPath:[NSIndexPath indexPathForItem:0 inSection:0]].calculatedSize;
   CGSize initialCVSize = cv.bounds.size;
 
   // Capture the node size before first call to prepareLayout after frame change.
   __block CGSize itemSizeAtFirstLayout = CGSizeZero;
   __block CGSize boundsSizeAtFirstLayout = CGSizeZero;
-  [[[[layout expect] andDo:^(NSInvocation *) {
+  [[[[collectionViewLayoutMock expect] andDo:^(NSInvocation *) {
     itemSizeAtFirstLayout = [cv nodeForItemAtIndexPath:[NSIndexPath indexPathForItem:0 inSection:0]].calculatedSize;
     boundsSizeAtFirstLayout = [cv bounds].size;
   }] andForwardToRealObject] prepareLayout];
@@ -670,10 +765,12 @@
   XCTAssertNotEqualObjects(NSStringFromCGSize(initialCVSize),  NSStringFromCGSize(boundsSizeAtFirstLayout));
   XCTAssertEqualObjects(NSStringFromCGSize(itemSizeAtFirstLayout), NSStringFromCGSize(finalItemSize));
   XCTAssertEqualObjects(NSStringFromCGSize(boundsSizeAtFirstLayout), NSStringFromCGSize(finalCVSize));
-  [layout verify];
+  [collectionViewLayoutMock verify];
 
   // Teardown
   [[UIDevice currentDevice] setValue:@(oldDeviceOrientation) forKey:@"orientation"];
+
+  [collectionViewLayoutMock stopMocking];
 }
 
 /**

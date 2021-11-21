@@ -8,10 +8,6 @@
 //
 
 #import <XCTest/XCTest.h>
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdocumentation"
-#import <JGMethodSwizzler/JGMethodSwizzler.h>
-#pragma clang diagnostic pop
 
 #import <AsyncDisplayKit/AsyncDisplayKit.h>
 #import <AsyncDisplayKit/ASTableView.h>
@@ -40,13 +36,6 @@
   [super relayoutAllNodesWithInvalidationBlock:invalidationBlock];
 }
 
-@end
-
-@interface UITableView (Testing)
-// This will start recording all editing calls to UITableView
-// into the provided array.
-// Make sure to call [UITableView deswizzleInstanceMethods] to reset this.
-+ (void)as_recordEditingCallsIntoArray:(NSMutableArray<NSString *> *)selectors;
 @end
 
 @interface ASTestTableView : ASTableView
@@ -83,20 +72,29 @@
 
 @implementation ASTableViewTestDelegate
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
 {
   return 0;
 }
+#pragma clang diagnostic pop
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
 - (ASCellNode *)tableView:(ASTableView *)tableView nodeForRowAtIndexPath:(NSIndexPath *)indexPath
 {
   return nil;
 }
+#pragma clang diagnostic pop
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
 - (ASCellNodeBlock)tableView:(ASTableView *)tableView nodeBlockForRowAtIndexPath:(NSIndexPath *)indexPath
 {
   return nil;
 }
+#pragma clang diagnostic pop
 
 - (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section
 {
@@ -120,6 +118,7 @@
 @interface ASTestTextCellNode : ASTextCellNode
 /** Calculated by counting how many times -layoutSpecThatFits: is called on the main thread. */
 @property (nonatomic) int numberOfLayoutsOnMainThread;
+@property (nonatomic) NSUInteger didEnterPreloadStateCount;
 @end
 
 @implementation ASTestTextCellNode
@@ -130,6 +129,12 @@
     _numberOfLayoutsOnMainThread++;
   }
   return [super layoutSpecThatFits:constrainedSize];
+}
+
+- (void)didEnterPreloadState
+{
+  [super didEnterPreloadState];
+  _didEnterPreloadStateCount++;
 }
 
 @end
@@ -162,16 +167,24 @@
   }
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView
 {
   return _numberOfSections;
 }
+#pragma clang diagnostic pop
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
 {
   return _rowsPerSection;
 }
+#pragma clang diagnostic pop
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
 - (ASCellNode *)tableView:(ASTableView *)tableView nodeForRowAtIndexPath:(NSIndexPath *)indexPath
 {
   ASTestTextCellNode *textCellNode = [ASTestTextCellNode new];
@@ -179,7 +192,10 @@
   
   return textCellNode;
 }
+#pragma clang diagnostic pop
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
 - (ASCellNodeBlock)tableView:(ASTableView *)tableView nodeBlockForRowAtIndexPath:(NSIndexPath *)indexPath
 {
   if (_nodeBlockForItem) {
@@ -194,6 +210,7 @@
     return textCellNode;
   };
 }
+#pragma clang diagnostic pop
 
 - (nullable NSArray<NSString *> *)sectionIndexTitlesForTableView:(UITableView *)tableView
 {
@@ -212,9 +229,42 @@
 
 @implementation ASTableViewFilledDelegate
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
 - (ASSizeRange)tableView:(ASTableView *)tableView constrainedSizeForRowAtIndexPath:(NSIndexPath *)indexPath
 {
   return ASSizeRangeMake(CGSizeMake(10, 42));
+}
+#pragma clang diagnostic pop
+
+@end
+
+@interface ATableViewTestController: UIViewController
+
+@property (nonatomic) ASTableNode *tableNode;
+@property (nonatomic) ASTableViewFilledDataSource *dataSource;
+
+@end
+
+@implementation ATableViewTestController
+
+- (instancetype)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil {
+  self = [super initWithNibName:nibNameOrNil bundle:nibBundleOrNil];
+  if (self) {
+    ASTableNode *tableNode = [[ASTableNode alloc] initWithStyle:UITableViewStylePlain];
+    tableNode.frame = CGRectMake(0, 0, 100, 500);
+
+    ASTableViewFilledDataSource *dataSource = [ASTableViewFilledDataSource new];
+
+    tableNode.delegate = dataSource;
+    tableNode.dataSource = dataSource;
+    
+    self.tableNode = tableNode;
+    self.dataSource = dataSource;
+
+    [self.view addSubview:self.tableNode.view];
+  }
+  return self;
 }
 
 @end
@@ -229,7 +279,8 @@
 {
   [super setUp];
   ASConfiguration *config = [ASConfiguration new];
-  config.experimentalFeatures = ASExperimentalOptimizeDataControllerPipeline;
+  config.experimentalFeatures = ASExperimentalOptimizeDataControllerPipeline
+                              | ASExperimentalRangeUpdateOnChangesetUpdate;
   [ASConfigurationManager test_resetWithConfiguration:config];
 }
 
@@ -608,7 +659,6 @@
 
 - (void)testThatInitialDataLoadHappensInOneShot
 {
-  NSMutableArray *selectors = [NSMutableArray array];
   ASTableNode *node = [[ASTableNode alloc] initWithStyle:UITableViewStylePlain];
 
   ASTableViewFilledDataSource *dataSource = [ASTableViewFilledDataSource new];
@@ -617,23 +667,25 @@
   node.dataSource = dataSource;
   node.delegate = dataSource;
 
-  [UITableView as_recordEditingCallsIntoArray:selectors];
+  __block NSUInteger reloadCallCount = 0;
+  __block IMP originalIMP = ASReplaceMethodWithBlock(UITableView.class, @selector(reloadData), ^(UITableView *_tableView) {
+    reloadCallCount += 1;
+    ((void (*)(id,SEL))originalIMP)(_tableView, @selector(reloadData));
+  });
+
   XCTAssertGreaterThan(node.numberOfSections, 0);
   [node waitUntilAllUpdatesAreProcessed];
   XCTAssertGreaterThan(node.view.numberOfSections, 0);
 
   // The first reloadData call helps prevent UITableView from calling it multiple times while ASDataController is working.
   // The second reloadData call is the real one.
-  NSArray *expectedSelectors = @[ NSStringFromSelector(@selector(reloadData)),
-                                  NSStringFromSelector(@selector(reloadData)) ];
-  XCTAssertEqualObjects(selectors, expectedSelectors);
+  XCTAssertEqual(reloadCallCount, 2);
 
-  [UITableView deswizzleAllInstanceMethods];
+  method_setImplementation(class_getInstanceMethod(UITableView.class, @selector(reloadData)), (IMP)originalIMP);
 }
 
 - (void)testThatReloadDataHappensInOneShot
 {
-  NSMutableArray *selectors = [NSMutableArray array];
   ASTableNode *node = [[ASTableNode alloc] initWithStyle:UITableViewStylePlain];
 
   ASTableViewFilledDataSource *dataSource = [ASTableViewFilledDataSource new];
@@ -648,16 +700,19 @@
   XCTAssertGreaterThan(node.view.numberOfSections, 0);
 
   // Reload data.
-  [UITableView as_recordEditingCallsIntoArray:selectors];
+  __block NSUInteger reloadCallCount = 0;
+  __block IMP originalIMP = ASReplaceMethodWithBlock(UITableView.class, @selector(reloadData), ^(UITableView *_tableView) {
+    reloadCallCount += 1;
+    ((void (*)(id,SEL))originalIMP)(_tableView, @selector(reloadData));
+  });
   [node reloadData];
   [node waitUntilAllUpdatesAreProcessed];
 
   // Assert that the beginning of the call pattern is correct.
   // There is currently noise that comes after that we will allow for this test.
-  NSArray *expectedSelectors = @[ NSStringFromSelector(@selector(reloadData)) ];
-  XCTAssertEqualObjects(selectors, expectedSelectors);
+  XCTAssertEqual(reloadCallCount, 1);
 
-  [UITableView deswizzleAllInstanceMethods];
+  method_setImplementation(class_getInstanceMethod(UITableView.class, @selector(reloadData)), (IMP)originalIMP);
 }
 
 /**
@@ -744,6 +799,93 @@
   [node performBatchAnimated:NO updates:nil completion:nil];
 }
 
+- (void)testItemsInsertedIntoThePreloadRangeGetPreloaded
+{
+  // Start table node setup
+  ATableViewTestController *testController = [[ATableViewTestController alloc] initWithNibName:nil bundle:nil];
+  ASTableNode *tableNode = testController.tableNode;
+  ASTableViewFilledDataSource *dataSource = testController.dataSource;
+
+  UIWindow *window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+  window.rootViewController = testController;
+  [window makeKeyAndVisible];
+  
+  ASRangeTuningParameters minimumPreloadParams = { .leadingBufferScreenfuls = 1, .trailingBufferScreenfuls = 1 };
+  [tableNode setTuningParameters:minimumPreloadParams forRangeMode:ASLayoutRangeModeMinimum rangeType:ASLayoutRangeTypePreload];
+  [tableNode updateCurrentRangeWithMode:ASLayoutRangeModeMinimum];
+  
+  [tableNode reloadData];
+  [tableNode waitUntilAllUpdatesAreProcessed];
+  [testController.tableNode.view layoutIfNeeded];
+  // End table node setup
+
+
+  NSIndexPath *lastVisibleIndex = [[tableNode indexPathsForVisibleRows] sortedArrayUsingSelector:@selector(compare:)].lastObject;
+  
+  NSInteger itemCount = dataSource.rowsPerSection;
+  BOOL isLastItemInSection = lastVisibleIndex.row == itemCount - 1;
+  NSInteger nextItemSection = isLastItemInSection ? lastVisibleIndex.section + 1 : lastVisibleIndex.section;
+  NSInteger nextItemRow = isLastItemInSection ? 0 : lastVisibleIndex.row + 1;
+  
+  XCTAssertTrue(dataSource.numberOfSections > nextItemSection, @"There is no items after the last visible item. Update the section/row counts so that there is one for this test to work properly.");
+  XCTAssertTrue(dataSource.rowsPerSection > nextItemRow, @"There is no items after the last visible item. Update the section/row counts so that there is one for this test to work properly.");
+  
+  NSIndexPath *nextItemIndexPath = [NSIndexPath indexPathForRow:nextItemRow inSection:nextItemSection];
+  ASTestTextCellNode *nodeBeforeUpdate = (ASTestTextCellNode *)[tableNode nodeForRowAtIndexPath:nextItemIndexPath];
+
+  XCTestExpectation *noChangeDone = [self expectationWithDescription:@"Batch update with no changes done and completion block has been called. Tuning params set to 1 screenful."];
+  
+  __block ASTestTextCellNode *nodeAfterUpdate;
+  [tableNode performBatchUpdates:^{
+  } completion:^(BOOL finished) {
+    nodeAfterUpdate = (ASTestTextCellNode *)[tableNode nodeForRowAtIndexPath:nextItemIndexPath];
+    [noChangeDone fulfill];
+  }];
+  
+  [self waitForExpectations:@[ noChangeDone ] timeout:1];
+  
+  XCTAssertTrue(nodeBeforeUpdate == nodeAfterUpdate, @"Node should not have changed since no updates were made.");
+  XCTAssertTrue(nodeAfterUpdate.didEnterPreloadStateCount == 1, @"Node should have been preloaded.");
+
+  XCTestExpectation *changeDone = [self expectationWithDescription:@"Batch update with changes done and completion block has been called. Tuning params set to 1 screenful."];
+  
+  [tableNode performBatchUpdates:^{
+    NSArray *indexPaths = @[ nextItemIndexPath ];
+    [tableNode deleteRowsAtIndexPaths:indexPaths withRowAnimation:UITableViewRowAnimationNone];
+    [tableNode insertRowsAtIndexPaths:indexPaths withRowAnimation:UITableViewRowAnimationNone];
+  } completion:^(BOOL finished) {
+    nodeAfterUpdate = (ASTestTextCellNode *)[tableNode nodeForRowAtIndexPath:nextItemIndexPath];
+    [changeDone fulfill];
+  }];
+  
+  [self waitForExpectations:@[ changeDone ] timeout:1];
+  
+  XCTAssertTrue(nodeBeforeUpdate != nodeAfterUpdate, @"Node should have changed after updating.");
+  XCTAssertTrue(nodeAfterUpdate.didEnterPreloadStateCount == 1, @"New node should have been preloaded.");
+  
+  minimumPreloadParams = { .leadingBufferScreenfuls = 0, .trailingBufferScreenfuls = 0 };
+  [tableNode setTuningParameters:minimumPreloadParams forRangeMode:ASLayoutRangeModeMinimum rangeType:ASLayoutRangeTypePreload];
+  [tableNode updateCurrentRangeWithMode:ASLayoutRangeModeMinimum];
+
+  XCTestExpectation *changeDoneZeroSreenfuls = [self expectationWithDescription:@"Batch update with changes done and completion block has been called. Tuning params set to 0 screenful."];
+  
+  nodeBeforeUpdate = nodeAfterUpdate;
+  __block ASTestTextCellNode *nodeAfterUpdateZeroSreenfuls;
+  [tableNode performBatchUpdates:^{
+    NSArray *indexPaths = @[ nextItemIndexPath ];
+    [tableNode deleteRowsAtIndexPaths:indexPaths withRowAnimation:UITableViewRowAnimationNone];
+    [tableNode insertRowsAtIndexPaths:indexPaths withRowAnimation:UITableViewRowAnimationNone];
+  } completion:^(BOOL finished) {
+    nodeAfterUpdateZeroSreenfuls = (ASTestTextCellNode *)[tableNode nodeForRowAtIndexPath:nextItemIndexPath];
+    [changeDoneZeroSreenfuls fulfill];
+  }];
+  
+  [self waitForExpectations:@[ changeDoneZeroSreenfuls ] timeout:1];
+  
+  XCTAssertTrue(nodeBeforeUpdate != nodeAfterUpdateZeroSreenfuls, @"Node should have changed after updating.");
+  XCTAssertTrue(nodeAfterUpdateZeroSreenfuls.didEnterPreloadStateCount == 0, @"New node should NOT have been preloaded.");
+}
+
 // https://github.com/facebook/AsyncDisplayKit/issues/2252#issuecomment-263689979
 - (void)testIssue2252
 {
@@ -759,7 +901,7 @@
   ASTableViewFilledDataSource *ds = [[ASTableViewFilledDataSource alloc] init];
   ds.rowsPerSection = 1;
   node.dataSource = ds;
-  ASViewController *vc = [[ASViewController alloc] initWithNode:node];
+  ASDKViewController *vc = [[ASDKViewController alloc] initWithNode:node];
   UITabBarController *tabCtrl = [[UITabBarController alloc] init];
   tabCtrl.viewControllers = @[ vc ];
   tabCtrl.tabBar.translucent = NO;
@@ -905,56 +1047,6 @@
   UITableViewCell *uikitCell = [tableView cellForRowAtIndexPath:indexPath];
   BOOL areColorsEqual = CGColorEqualToColor(uikitCell.tintColor.CGColor, UIColor.yellowColor.CGColor);
   XCTAssertTrue(areColorsEqual);
-}
-
-@end
-
-@implementation UITableView (Testing)
-
-+ (void)as_recordEditingCallsIntoArray:(NSMutableArray<NSString *> *)selectors
-{
-  [UITableView swizzleInstanceMethod:@selector(reloadData) withReplacement:JGMethodReplacementProviderBlock {
-    return JGMethodReplacement(void, UITableView *) {
-      JGOriginalImplementation(void);
-      [selectors addObject:NSStringFromSelector(_cmd)];
-    };
-  }];
-  [UITableView swizzleInstanceMethod:@selector(beginUpdates) withReplacement:JGMethodReplacementProviderBlock {
-    return JGMethodReplacement(void, UITableView *) {
-      JGOriginalImplementation(void);
-      [selectors addObject:NSStringFromSelector(_cmd)];
-    };
-  }];
-  [UITableView swizzleInstanceMethod:@selector(endUpdates) withReplacement:JGMethodReplacementProviderBlock {
-    return JGMethodReplacement(void, UITableView *) {
-      JGOriginalImplementation(void);
-      [selectors addObject:NSStringFromSelector(_cmd)];
-    };
-  }];
-  [UITableView swizzleInstanceMethod:@selector(insertRowsAtIndexPaths:withRowAnimation:) withReplacement:JGMethodReplacementProviderBlock {
-    return JGMethodReplacement(void, UITableView *, NSArray *indexPaths, UITableViewRowAnimation anim) {
-      JGOriginalImplementation(void, indexPaths, anim);
-      [selectors addObject:NSStringFromSelector(_cmd)];
-    };
-  }];
-  [UITableView swizzleInstanceMethod:@selector(deleteRowsAtIndexPaths:withRowAnimation:) withReplacement:JGMethodReplacementProviderBlock {
-    return JGMethodReplacement(void, UITableView *, NSArray *indexPaths, UITableViewRowAnimation anim) {
-      JGOriginalImplementation(void, indexPaths, anim);
-      [selectors addObject:NSStringFromSelector(_cmd)];
-    };
-  }];
-  [UITableView swizzleInstanceMethod:@selector(insertSections:withRowAnimation:) withReplacement:JGMethodReplacementProviderBlock {
-    return JGMethodReplacement(void, UITableView *, NSIndexSet *indexes, UITableViewRowAnimation anim) {
-      JGOriginalImplementation(void, indexes, anim);
-      [selectors addObject:NSStringFromSelector(_cmd)];
-    };
-  }];
-  [UITableView swizzleInstanceMethod:@selector(deleteSections:withRowAnimation:) withReplacement:JGMethodReplacementProviderBlock {
-    return JGMethodReplacement(void, UITableView *, NSIndexSet *indexes, UITableViewRowAnimation anim) {
-      JGOriginalImplementation(void, indexes, anim);
-      [selectors addObject:NSStringFromSelector(_cmd)];
-    };
-  }];
 }
 
 @end

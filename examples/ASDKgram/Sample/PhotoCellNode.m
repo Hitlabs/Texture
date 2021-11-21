@@ -46,7 +46,7 @@
 
 #pragma mark - Lifecycle
 
-- (instancetype)initWithPhotoObject:(PhotoModel *)photo;
+- (instancetype)initWithPhotoObject:(PhotoModel *)photo
 {
   self = [super init];
   
@@ -58,7 +58,7 @@
     _userAvatarImageNode.URL = photo.ownerUserProfile.userPicURL;   // FIXME: make round
     
     // FIXME: autocomplete for this line seems broken
-    [_userAvatarImageNode setImageModificationBlock:^UIImage *(UIImage *image) {
+    [_userAvatarImageNode setImageModificationBlock:^UIImage *(UIImage *image, ASPrimitiveTraitCollection traitCollection) {
       CGSize profileImageSize = CGSizeMake(USER_IMAGE_HEIGHT, USER_IMAGE_HEIGHT);
       return [image makeCircularImageWithSize:profileImageSize backgroundColor:nil];
     }];
