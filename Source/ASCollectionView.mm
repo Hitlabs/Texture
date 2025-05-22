@@ -281,9 +281,7 @@ static NSString * const kReuseIdentifier = @"_ASCollectionReuseIdentifier";
   // Experiments done by Instagram show that this option being YES (default)
   // when unused causes a significant hit to scroll performance.
   // https://github.com/Instagram/IGListKit/issues/318
-  if (AS_AVAILABLE_IOS_TVOS(10, 10)) {
-    super.prefetchingEnabled = NO;
-  }
+  super.prefetchingEnabled = NO;
 
   _layoutController = [[ASCollectionViewLayoutController alloc] initWithCollectionView:self];
   
@@ -1906,9 +1904,7 @@ static NSString * const kReuseIdentifier = @"_ASCollectionReuseIdentifier";
   // Since we are accessing self.collectionViewLayout, we should make sure we are on main
   ASDisplayNodeAssertMainThread();
   BOOL flipsHorizontallyInOppositeLayoutDirection = NO;
-  if (AS_AVAILABLE_IOS(11.0)) {
-    flipsHorizontallyInOppositeLayoutDirection = self.collectionViewLayout.flipsHorizontallyInOppositeLayoutDirection;
-  }
+  flipsHorizontallyInOppositeLayoutDirection = self.collectionViewLayout.flipsHorizontallyInOppositeLayoutDirection;
   if (ASBatchFetchingDimensionContainsTail(_supportedDimensionsForBatching)) {
     if (ASDisplayShouldFetchBatchForScrollView(self, self.scrollDirection, self.scrollableDirections, ASBatchFetchingDimensionTail, contentOffset, velocity, flipsHorizontallyInOppositeLayoutDirection)) {
       [self _beginBatchFetchingForDimension:ASBatchFetchingDimensionTail];
