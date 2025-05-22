@@ -189,7 +189,8 @@ NS_INLINE UIImage *BlueImageMake(CGRect bounds)
     }];
 }
 
-- (void)testBackgroundDynamicColorWhenOverrideUserInterfaceStyle {
+- (void)testBackgroundDynamicColorWhenOverrideUserInterfaceStyle 
+{
     UIViewController *rootViewController = [[UIViewController alloc] init];
     
     UITestTraitCollectionSyncViewController *testViewController = [[UITestTraitCollectionSyncViewController alloc] init];
