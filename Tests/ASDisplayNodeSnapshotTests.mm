@@ -119,43 +119,24 @@ NS_INLINE UIImage *BlueImageMake(CGRect bounds)
     node.image = BlueImageMake(bounds);
     node.frame = bounds;
     node.cornerRoundingType = ASCornerRoundingTypeClipping;
-#if AS_AT_LEAST_IOS13
-    if (@available(iOS 13.0, *)) {
-      node.backgroundColor = UIColor.systemBackgroundColor;
-    } else {
-      node.backgroundColor = UIColor.greenColor;
-    }
-#else
-    node.backgroundColor = UIColor.greenColor;
-#endif
+    node.backgroundColor = UIColor.systemBackgroundColor;
     node.maskedCorners = c;
     node.cornerRadius = 15;
     // A layout pass is required, because that's where we lay out the clip layers.
     [node.layer layoutIfNeeded];
 
-#if AS_AT_LEAST_IOS13
-    if (@available(iOS 13.0, *)) {
-      [[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleLight] performAsCurrentTraitCollection:^{
-        ASSnapshotVerifyNode(node, ([NSString stringWithFormat:@"%d_light", (int)c]));
-      }];
+    [[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleLight] performAsCurrentTraitCollection:^{
+      ASSnapshotVerifyNode(node, ([NSString stringWithFormat:@"%d_light", (int)c]));
+    }];
 
-      [[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleDark] performAsCurrentTraitCollection:^{
-        ASSnapshotVerifyNode(node, ([NSString stringWithFormat:@"%d_dark", (int)c]));
-      }];
-    } else {
-      ASSnapshotVerifyNode(node, ([NSString stringWithFormat:@"%d", (int)c]));
-    }
-#else
-    ASSnapshotVerifyNode(node, ([NSString stringWithFormat:@"%d", (int)c]));
-#endif
+    [[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleDark] performAsCurrentTraitCollection:^{
+      ASSnapshotVerifyNode(node, ([NSString stringWithFormat:@"%d_dark", (int)c]));
+    }];
   }
 }
 
-#if AS_AT_LEAST_IOS13
-
 - (void)testUserInterfaceStyleSnapshotTesting
 {
-  if (@available(iOS 13.0, *)) {
     ASDisplayNode *node = [[ASDisplayNode alloc] init];
     [node setLayerBacked:YES];
 
@@ -171,11 +152,9 @@ NS_INLINE UIImage *BlueImageMake(CGRect bounds)
     [[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleDark] performAsCurrentTraitCollection:^{
       ASSnapshotVerifyNode(node, @"user_interface_style_dark");
     }];
-  }
 }
 
 - (void)testBackgroundDynamicColor {
-  if (@available(iOS 13.0, *)) {
     ASDisplayNode *node = [[ASImageNode alloc] init];
     node.backgroundColor = [UIColor systemGray6Color];
     auto bounds = CGRectMake(0, 0, 100, 100);
@@ -190,11 +169,9 @@ NS_INLINE UIImage *BlueImageMake(CGRect bounds)
     [tcDark performAsCurrentTraitCollection: ^{
       ASSnapshotVerifyNode(node, @"dark");
     }];
-  }
 }
 
 - (void)testBackgroundDynamicColorLayerBacked {
-  if (@available(iOS 13.0, *)) {
     ASDisplayNode *node = [[ASImageNode alloc] init];
     node.backgroundColor = [UIColor systemGray6Color];
     node.layerBacked = YES;
@@ -210,11 +187,10 @@ NS_INLINE UIImage *BlueImageMake(CGRect bounds)
     [tcDark performAsCurrentTraitCollection: ^{
       ASSnapshotVerifyNode(node, @"dark");
     }];
-  }
 }
 
-- (void)testBackgroundDynamicColorWhenOverrideUserInterfaceStyle {
-  if (@available(iOS 13.0, *)) {
+- (void)testBackgroundDynamicColorWhenOverrideUserInterfaceStyle 
+{
     UIViewController *rootViewController = [[UIViewController alloc] init];
     
     UITestTraitCollectionSyncViewController *testViewController = [[UITestTraitCollectionSyncViewController alloc] init];
@@ -234,7 +210,6 @@ NS_INLINE UIImage *BlueImageMake(CGRect bounds)
 
     [self snapshotVerifyNode:testViewController.testNode withIdentifier: @"dark"];
     [self snapshotVerifyNode:testViewController.testNodeWithViewBlock withIdentifier: @"light"];
-  }
 }
 
 - (void)ensureDisplaySynchronously:(ASDisplayNode *)node
@@ -253,7 +228,5 @@ NS_INLINE UIImage *BlueImageMake(CGRect bounds)
   [self ensureDisplaySynchronously:node];
   FBSnapshotVerifyLayerWithOptions(node.layer, suffix, ASSnapshotTestCaseDefaultSuffixes(), 0);
 }
-
-#endif // #if AS_AT_LEAST_IOS13
 
 @end
