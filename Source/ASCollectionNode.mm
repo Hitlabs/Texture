@@ -83,6 +83,7 @@
     _flags.inverted = NO;
     _contentInset = UIEdgeInsetsZero;
     _contentOffset = CGPointZero;
+    _leadingScreensForBatching = 2.0;
     _flags.animatesContentOffset = NO;
     _flags.showsVerticalScrollIndicator = YES;
     _flags.showsHorizontalScrollIndicator = YES;
